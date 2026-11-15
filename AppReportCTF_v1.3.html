@@ -492,13 +492,15 @@
     return { bytes, avvisi };
   }
 
-  // Nome file suggerito: RI_<n>_<cliente>_<aaaa-mm-gg>.pdf
+  // Nome del file: <n° rapporto>-<nome commessa>-<ggmmaaaa>.pdf  (es. 06020-NOME COMMESSA-15112026.pdf).
+  // Senza commessa si usa il cliente. Si tolgono solo i caratteri non ammessi nei nomi di file di Windows.
   function nomeFile(dati) {
-    const pulito = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const valido = (s) => String(s || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_')
+      .replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '');
     const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dati.data || '');
-    const data = m ? `${m[3]}-${m[2]}-${m[1]}` : pulito(dati.data);
-    return ['RI', pulito(dati.numero), pulito(dati.cliente).slice(0, 40), data].filter(Boolean).join('_') + '.pdf';
+    const data = m ? `${m[1]}${m[2]}${m[3]}` : '';
+    const nome = [valido(dati.numero), valido(dati.commessa || dati.cliente).slice(0, 80), data].filter(Boolean).join('-');
+    return (nome || 'rapporto') + '.pdf';
   }
 
   return { compila, nomeFile, CAUSALI, MAX_RIGHE, COLONNE };
@@ -640,7 +642,7 @@
 <script>
 (function () {
   'use strict';
-  const APP_VERSION='1.2';
+  const APP_VERSION='1.3';
   const $ = (s) => document.querySelector(s);
   const { compila, nomeFile, CAUSALI, MAX_RIGHE } = window.RapportoPdf;
   // Modulo PDF e commesse NON sono dentro questo file: si leggono all'avvio dai percorsi di config.json.
@@ -1005,6 +1007,8 @@
   function datiPdf() {
     return {
       numero: bozza.numero.trim(), data: itDaISO(bozza.dataISO), cliente: bozza.cliente, indirizzo: bozza.indirizzo,
+      // solo per il nome del file: nome della commessa senza il n° cliente
+      commessa: (commessaPerCartella.get(bozza.cartella) || {}).nome || '',
       // Il testo "Altro" si stampa solo se la causale scelta è Altro.
       causale: bozza.causale, altro: bozza.causale === 'Altro' ? bozza.altro : '',
       righe: bozza.righe.map((r) => {
@@ -1027,7 +1031,10 @@
   let timerSalva, timerAnteprima;
   const anteprimaVisibile = () => getComputedStyle($('.anteprima')).display !== 'none';
 
+  // Dopo il salvataggio il messaggio "Salvato…" resta visibile finché non si modifica qualcosa.
+  let esitoSalvataggioVisibile = false;
   function cambiato() {
+    esitoSalvataggioVisibile = false;
     clearTimeout(timerSalva);
     timerSalva = setTimeout(() => scriviLS(CHIAVE_BOZZA, bozza), 250);
     clearTimeout(timerAnteprima);
@@ -1060,7 +1067,8 @@
     try {
       const { blob, avvisi } = await genera();
       const obb = evidenziaObbligatori();
-      if (obb.length) mostraStato('err', testoObbligatori(obb), avvisi);
+      if (esitoSalvataggioVisibile) { /* si lascia il messaggio del salvataggio */ }
+      else if (obb.length) mostraStato('err', testoObbligatori(obb), avvisi);
       else if (avvisi.length) mostraStato('warn', 'Attenzione:', avvisi);
       else mostraStato('ok', 'Tutto il testo entra nel modulo.');
       if (anteprimaVisibile()) {
@@ -1121,21 +1129,75 @@
     if (m.length && !confirm('Mancano: ' + m.join(', ') + '.\nSalvare il PDF comunque?')) return;
     try {
       const { blob, avvisi, nome } = await genera();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = nome;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+      // Due copie: 1) cartella dei rapporti accanto al setup  2) dove sceglie l'utente (ripropone l'ultima cartella).
+      let esito;
+      if (EXE_SALVA_FILE) esito = await chiediAllExe('salvaPdf', { nome, dati: await bloboInBase64(blob) });
+      else if (NEL_BROWSER && window.showSaveFilePicker) esito = await salvaNelBrowser(blob, nome);
+      else esito = scarica(blob, nome); // exe vecchio o server di sviluppo: download normale
       const t = bozza.firmaAziendaNome.trim();
       if (t) pref.tecnici = [t, ...pref.tecnici.filter((x) => x !== t)].slice(0, 15);
       scriviLS(CHIAVE_PREF, pref);
       riempiDatalist('#elencoTecnici', pref.tecnici);
-      mostraStato(avvisi.length ? 'warn' : 'ok', `Salvato: ${nome}` + (avvisi.length ? ' — attenzione:' : ''), avvisi);
+      const salvati = [esito.copia1, esito.copia2].filter(Boolean);
+      const note = (esito.avvisi || []).concat(avvisi);
+      const testo = salvati.length ? `Salvato: ${salvati.join('  ·  ')}` : 'PDF non salvato.';
+      mostraStato(!salvati.length ? 'err' : (note.length ? 'warn' : 'ok'), testo, note);
+      esitoSalvataggioVisibile = true;
     } catch (e) {
       console.error(e);
-      mostraStato('err', 'Errore nella creazione del PDF: ' + e.message);
+      mostraStato('err', 'Errore nel salvataggio del PDF: ' + e.message);
     }
   });
+
+  function scarica(blob, nome) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = nome;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    return { copia1: `${nome} (Download)`, copia2: null, avvisi: [] };
+  }
+
+  async function bloboInBase64(blob) {
+    const byte = new Uint8Array(await blob.arrayBuffer());
+    let s = '';
+    for (let i = 0; i < byte.length; i += 0x8000) s += String.fromCharCode.apply(null, byte.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+
+  // Browser: copia 1 nella cartella dei rapporti (scelta una volta e ricordata), copia 2 dove si sceglie
+  // (il browser ripropone l'ultima cartella usata per questo salvataggio).
+  async function salvaNelBrowser(blob, nome) {
+    const esito = { copia1: null, copia2: null, avvisi: [] };
+    const scrivi = async (fileHandle) => { const w = await fileHandle.createWritable(); await w.write(blob); await w.close(); };
+    try {
+      let dir = await ricordato('cartellaRapporti');
+      if (dir && !(await permesso(dir, 'readwrite', true))) dir = null;
+      if (!dir) {
+        mostraStato('', `Scegli la cartella per la copia dei rapporti (consigliata: Documenti\\ReportCTF\\Rapporti): verrà ricordata.`);
+        dir = await window.showDirectoryPicker({ id: 'rapporti', mode: 'readwrite', startIn: 'documents' });
+        if (await dentroRadice(dir)) throw new Error('la cartella è dentro la cartella principale o l\'archivio (sola lettura)');
+        await ricorda('cartellaRapporti', dir);
+      }
+      await scrivi(await dir.getFileHandle(nome, { create: true }));
+      esito.copia1 = `${dir.name}\\${nome}`;
+    } catch (e) {
+      esito.avvisi.push(e.name === 'AbortError' ? 'Copia 1 non salvata (annullato).' : 'Copia 1 non salvata: ' + e.message);
+    }
+    try {
+      const h = await window.showSaveFilePicker({ id: 'copia2', suggestedName: nome, types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }] });
+      if (await dentroRadice(h)) {
+        try { if ((await h.getFile()).size === 0 && h.remove) await h.remove(); } catch (e) { /* già assente */ }
+        throw new Error('non posso scrivere dentro la cartella principale o l\'archivio (sola lettura)');
+      }
+      await scrivi(h);
+      esito.copia2 = h.name;
+    } catch (e) {
+      esito.avvisi.push(e.name === 'AbortError' ? 'Seconda copia non salvata (annullato).'
+        : (e.name === 'SecurityError' ? 'Seconda copia non salvata: premi di nuovo "Salva PDF".' : 'Seconda copia non salvata: ' + e.message));
+    }
+    return esito;
+  }
 
   $('#apriAnteprima').addEventListener('click', async () => {
     if (!MODELLO) { mostraStato('err', SENZA_MODELLO); return; }
@@ -1171,6 +1233,9 @@
   //  3. HTML aperto in Chrome/Edge: setup.json e cartella principale si scelgono una volta (permessi ricordati).
   const NELL_EXE = !!(window.chrome && window.chrome.webview);
   const EXE_VECCHIO = NELL_EXE && !window.__WRAPPER__; // exe 1.0: capisce solo il comando 'carica'
+  // exe dalla 1.3 (o finto exe di sviluppo): salva da solo le 2 copie del PDF; prima si scaricava e basta.
+  const EXE_SALVA_FILE = NELL_EXE && (window.__WRAPPER__ === 'finto' ||
+    String(window.__WRAPPER__ || '0').split('.').map(Number).reduce((v, n, i) => v + (n || 0) * [10000, 100, 1][i], 0) >= 10300);
   const SU_SERVER = !NELL_EXE && /^https?:$/.test(location.protocol);
   const NEL_BROWSER = !NELL_EXE && !SU_SERVER;
   const SALTA = (n) => /^[@.$~]/.test(n) || /^(windows|program files.*|programdata|system volume information)$/i.test(n);
@@ -1566,7 +1631,7 @@
 
   // Vero se il file sta dentro la cartella principale scelta (nel browser non si vedono i percorsi, si confrontano gli handle).
   async function dentroRadice(handleFile) {
-    const radice = statoDlg.radiceHandle || await radiceRicordata();
+    const radice = (statoDlg && statoDlg.radiceHandle) || await radiceRicordata();
     if (!radice || !handleFile) return false;
     try { return (await radice.resolve(handleFile)) !== null; } catch (e) { return false; }
   }
