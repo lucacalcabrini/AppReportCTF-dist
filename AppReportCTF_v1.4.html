@@ -236,6 +236,7 @@
 
 <div class="azioni">
   <button type="button" id="nuovo">Nuovo rapporto</button>
+  <button type="button" id="apriRapporto" title="Riapri un PDF salvato da questa app per modificarlo">Apri rapporto…</button>
   <div class="stato" id="stato"></div>
   <span class="spazio"></span>
   <label class="check" title="Il PDF salvato non potrà più essere modificato (campi trasformati in testo)"><input type="checkbox" id="blocca"> PDF non modificabile</label>
@@ -488,9 +489,29 @@
     doc.setTitle(`Rapporto Intervento n° ${dati.numero || ''} – ${dati.cliente || ''}`.trim());
     if (opzioni.azienda) doc.setAuthor(opzioni.azienda);
     doc.setCreator('AppReportCTF');
+    // Dati dell'app (per riaprire e modificare il rapporto): flusso compresso legato al catalogo del PDF,
+    // che i lettori PDF ignorano (non è un allegato visibile).
+    if (opzioni.datiApp) {
+      const flusso = doc.context.flateStream(new TextEncoder().encode(JSON.stringify(opzioni.datiApp)));
+      doc.catalog.set(PDFLib.PDFName.of(CHIAVE_DATI), doc.context.register(flusso));
+    }
     const bytes = await doc.save({ updateFieldAppearances: false });
     return { bytes, avvisi };
   }
+
+  const CHIAVE_DATI = 'DatiRapporto';
+
+  // Dati dell'app salvati dentro un PDF da compila(); null se il PDF non li contiene (es. salvato da versioni precedenti).
+  async function leggiDati(PDFLib, bytes) {
+    const { PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } = PDFLib;
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true });
+    const flusso = doc.catalog.lookup(PDFName.of(CHIAVE_DATI));
+    if (!(flusso instanceof PDFRawStream)) return null;
+    try { return JSON.parse(new TextDecoder().decode(decodePDFRawStream(flusso).decode())); } catch (e) { return null; }
+  }
+
+  // Nome per non sovrascrivere un rapporto già salvato: n = 1 -> "<nome>-rev1.pdf".
+  const nomeRevisione = (nome, n) => (n ? nome.replace(/(\.pdf)?$/i, `-rev${n}.pdf`) : nome);
 
   // Nome del file: <n° rapporto>-<nome commessa>-<ggmmaaaa>.pdf  (es. 06020-NOME COMMESSA-15112026.pdf).
   // Senza commessa si usa il cliente. Si tolgono solo i caratteri non ammessi nei nomi di file di Windows.
@@ -503,7 +524,7 @@
     return (nome || 'rapporto') + '.pdf';
   }
 
-  return { compila, nomeFile, CAUSALI, MAX_RIGHE, COLONNE };
+  return { compila, leggiDati, nomeFile, nomeRevisione, CAUSALI, MAX_RIGHE, COLONNE };
 });
 </script>
 <script>/*
@@ -642,9 +663,9 @@
 <script>
 (function () {
   'use strict';
-  const APP_VERSION='1.3';
+  const APP_VERSION='1.4';
   const $ = (s) => document.querySelector(s);
-  const { compila, nomeFile, CAUSALI, MAX_RIGHE } = window.RapportoPdf;
+  const { compila, leggiDati, nomeFile, nomeRevisione, CAUSALI, MAX_RIGHE } = window.RapportoPdf;
   // Modulo PDF e commesse NON sono dentro questo file: si leggono all'avvio dai percorsi di config.json.
   let MODELLO = null;
   let CATALOGO = [];
@@ -675,16 +696,26 @@
     descrizione: '', noteCliente: '',
     firmaAziendaNome: pref.tecnici[0] || '', firmaClienteNome: '', firme: { azienda: null, cliente: null },
   });
-  let bozza = Object.assign(nuovaBozza(), leggiLS(CHIAVE_BOZZA, {}));
-  // Nomi dei campi della versione 1.0/1.1
-  if (bozza.firmaCtfNome !== undefined) { bozza.firmaAziendaNome = bozza.firmaAziendaNome || bozza.firmaCtfNome; delete bozza.firmaCtfNome; }
-  bozza.firme = Object.assign({ azienda: null, cliente: null }, bozza.firme);
-  if (bozza.firme.ctf !== undefined) { bozza.firme.azienda = bozza.firme.azienda || bozza.firme.ctf; delete bozza.firme.ctf; }
-  delete bozza.impianto; // campo della versione precedente
-  // Vitto/Alloggio erano testo libero nella versione precedente: ora Sì/No.
-  for (const r of bozza.righe) for (const k of ['vitto', 'alloggio']) {
-    if (typeof r[k] !== 'boolean') r[k] = /^(s|x|1)/i.test(String(r[k] || '').trim());
+  // Bozza salvata in memoria o riletta da un PDF: completa i campi mancanti e converte quelli delle versioni precedenti.
+  function normalizzaBozza(salvata) {
+    const b = Object.assign(nuovaBozza(), salvata || {});
+    for (const k of ['numero', 'dataISO', 'cartella', 'progetto', 'cliente', 'indirizzo', 'causale', 'altro',
+      'descrizione', 'noteCliente', 'firmaAziendaNome', 'firmaClienteNome']) b[k] = b[k] == null ? '' : String(b[k]);
+    // Nomi dei campi della versione 1.0/1.1
+    if (b.firmaCtfNome !== undefined) { b.firmaAziendaNome = b.firmaAziendaNome || b.firmaCtfNome; delete b.firmaCtfNome; }
+    b.firme = Object.assign({ azienda: null, cliente: null }, b.firme);
+    if (b.firme.ctf !== undefined) { b.firme.azienda = b.firme.azienda || b.firme.ctf; delete b.firme.ctf; }
+    for (const chi of ['azienda', 'cliente']) if (!/^data:image\/png;base64,/.test(b.firme[chi] || '')) b.firme[chi] = null;
+    delete b.impianto; // campo della versione precedente
+    if (!Array.isArray(b.righe) || !b.righe.length) b.righe = nuovaBozza().righe;
+    b.righe = b.righe.slice(0, MAX_RIGHE).map((r) => Object.assign(nuovaBozza().righe[0], r));
+    // Vitto/Alloggio erano testo libero nella versione precedente: ora Sì/No.
+    for (const r of b.righe) for (const k of ['vitto', 'alloggio']) {
+      if (typeof r[k] !== 'boolean') r[k] = /^(s|x|1)/i.test(String(r[k] || '').trim());
+    }
+    return b;
   }
+  let bozza = normalizzaBozza(leggiLS(CHIAVE_BOZZA, {}));
 
   const CAMPI = ['numero', 'cliente', 'indirizzo', 'altro', 'descrizione', 'noteCliente', 'firmaAziendaNome', 'firmaClienteNome'];
 
@@ -1008,7 +1039,8 @@
     return {
       numero: bozza.numero.trim(), data: itDaISO(bozza.dataISO), cliente: bozza.cliente, indirizzo: bozza.indirizzo,
       // solo per il nome del file: nome della commessa senza il n° cliente
-      commessa: (commessaPerCartella.get(bozza.cartella) || {}).nome || '',
+      // (rapporto riaperto con una commessa che non è più nell'archivio: il nome si ricava dalla cartella)
+      commessa: (commessaPerCartella.get(bozza.cartella) || {}).nome || window.Archivio.dividiNomeCodice(bozza.cartella || '').nome,
       // Il testo "Altro" si stampa solo se la causale scelta è Altro.
       causale: bozza.causale, altro: bozza.causale === 'Altro' ? bozza.altro : '',
       righe: bozza.righe.map((r) => {
@@ -1047,7 +1079,10 @@
   async function genera() {
     if (!MODELLO) throw new Error(SENZA_MODELLO);
     const dati = datiPdf();
-    const { bytes, avvisi } = await compila(window.PDFLib, MODELLO, dati, { blocca: $('#blocca').checked, azienda: SETUP.azienda || '' });
+    // datiApp: tutto il rapporto, dentro il PDF, per poterlo riaprire con "Apri rapporto…" (firme comprese).
+    const { bytes, avvisi } = await compila(window.PDFLib, MODELLO, dati, {
+      blocca: $('#blocca').checked, azienda: SETUP.azienda || '', datiApp: { formato: 1, app: APP_VERSION, bozza },
+    });
     return { blob: new Blob([bytes], { type: 'application/pdf' }), avvisi, nome: nomeFile(dati), dati };
   }
 
@@ -1179,6 +1214,13 @@
         if (await dentroRadice(dir)) throw new Error('la cartella è dentro la cartella principale o l\'archivio (sola lettura)');
         await ricorda('cartellaRapporti', dir);
       }
+      // Mai sovrascrivere un rapporto già salvato: se il nome c'è già si aggiunge -rev1, -rev2…
+      for (let n = 0; ; n++) {
+        try { await dir.getFileHandle(nomeRevisione(nome, n)); } catch (e) {
+          if (e.name !== 'NotFoundError' && e.name !== 'TypeMismatchError') throw e;
+          if (e.name === 'NotFoundError') { nome = nomeRevisione(nome, n); break; }
+        }
+      }
       await scrivi(await dir.getFileHandle(nome, { create: true }));
       esito.copia1 = `${dir.name}\\${nome}`;
     } catch (e) {
@@ -1224,6 +1266,76 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
+  // ---------- riaprire un rapporto salvato ----------
+  // Ogni PDF salvato dall'app (dalla 1.4) contiene tutti i dati del rapporto, firme comprese: si ricaricano nel modulo.
+  // Il PDF originale non si tocca: il nuovo salvataggio prende -rev1, -rev2… se il nome c'è già.
+  const bozzaVuota = () => !bozza.numero.trim() && !bozza.cartella && !bozza.descrizione.trim() && !bozza.noteCliente.trim() &&
+    !bozza.firme.azienda && !bozza.firme.cliente && !bozza.righe.some((r) => String(r.ore || '').trim() || String(r.note || '').trim());
+
+  // Sceglie un PDF: { nome, byte } oppure null se annullato.
+  async function scegliRapporto() {
+    if (EXE_APRI_FILE) {
+      const r = await chiediAllExe('apriPdf');
+      if (!r.nome) return null;
+      const s = atob(r.dati || '');
+      const byte = new Uint8Array(s.length);
+      for (let i = 0; i < s.length; i++) byte[i] = s.charCodeAt(i);
+      return { nome: r.nome, byte };
+    }
+    if (window.showOpenFilePicker) {
+      let inizio = 'documents';
+      try { inizio = (await ricordato('cartellaRapporti')) || inizio; } catch (e) { /* si parte da Documenti */ }
+      try {
+        const [h] = await window.showOpenFilePicker({ id: 'apriRapporto', startIn: inizio, types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }] });
+        const f = await h.getFile();
+        return { nome: f.name, byte: new Uint8Array(await f.arrayBuffer()) };
+      } catch (e) { if (e.name === 'AbortError') return null; throw e; }
+    }
+    // browser senza File System Access: scelta file classica
+    return new Promise((ok) => {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'application/pdf,.pdf';
+      inp.addEventListener('change', async () => {
+        const f = inp.files && inp.files[0];
+        ok(f ? { nome: f.name, byte: new Uint8Array(await f.arrayBuffer()) } : null);
+      });
+      inp.addEventListener('cancel', () => ok(null));
+      inp.click();
+    });
+  }
+
+  $('#apriRapporto').addEventListener('click', async () => {
+    try {
+      const file = await scegliRapporto();
+      if (!file) return;
+      let contenuto = null;
+      try { contenuto = await leggiDati(window.PDFLib, file.byte); } catch (e) { throw new Error(`"${file.nome}" non è un PDF leggibile.`); }
+      if (!contenuto || !contenuto.bozza || typeof contenuto.bozza !== 'object') {
+        mostraStato('err', `"${file.nome}" non contiene i dati del rapporto: si possono riaprire solo i PDF salvati con questa app dalla versione 1.4 in poi.`);
+        esitoSalvataggioVisibile = true;
+        return;
+      }
+      if (!bozzaVuota() && !confirm(`Aprire il rapporto "${file.nome}"?\nI dati che stai compilando verranno sostituiti (i PDF già salvati restano).`)) return;
+      pads.azienda.pulisci(); pads.cliente.pulisci(); // svuota i riquadri (prima di cambiare bozza)
+      bozza = normalizzaBozza(contenuto.bozza);
+      controlloObbligatori = false;
+      evidenziaObbligatori();
+      mostraBozza();
+      cambiato();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const avvisi = [];
+      if (bozza.cartella && CATALOGO.length && !commessaPerCartella.has(bozza.cartella)) {
+        avvisi.push(`La commessa "${bozza.cartella}" non è nell'archivio attuale: Cliente, Indirizzo e Matricola restano quelli del rapporto.`);
+      }
+      mostraStato(avvisi.length ? 'warn' : 'ok', `Riaperto "${file.nome}": modificalo e premi Salva PDF. ` +
+        'Il PDF originale resta com\'è: il nuovo, se il nome c\'è già, si salva con -rev1, -rev2…', avvisi);
+      esitoSalvataggioVisibile = true; // il messaggio resta finché non si modifica qualcosa
+    } catch (e) {
+      console.error(e);
+      mostraStato('err', 'Rapporto non aperto: ' + e.message);
+    }
+  });
+
   // ---------- setup e lettura dell'archivio (SOLA LETTURA) ----------
   // Il programma è generico: cartella principale, nome dell'azienda e "regole" dell'archivio (come riconoscere
   // la cartella archivio, il modulo PDF, il file anagrafica, le cartelle da escludere) stanno SOLO in setup.json.
@@ -1233,9 +1345,13 @@
   //  3. HTML aperto in Chrome/Edge: setup.json e cartella principale si scelgono una volta (permessi ricordati).
   const NELL_EXE = !!(window.chrome && window.chrome.webview);
   const EXE_VECCHIO = NELL_EXE && !window.__WRAPPER__; // exe 1.0: capisce solo il comando 'carica'
-  // exe dalla 1.3 (o finto exe di sviluppo): salva da solo le 2 copie del PDF; prima si scaricava e basta.
-  const EXE_SALVA_FILE = NELL_EXE && (window.__WRAPPER__ === 'finto' ||
-    String(window.__WRAPPER__ || '0').split('.').map(Number).reduce((v, n, i) => v + (n || 0) * [10000, 100, 1][i], 0) >= 10300);
+  // Versione dell'exe almeno "a.b.c" (il finto exe di sviluppo sa fare tutto).
+  const numeroVersione = (v) => String(v || '0').split('.').map(Number).reduce((s, n, i) => s + (n || 0) * [10000, 100, 1][i], 0);
+  const exeAlmeno = (v) => NELL_EXE && (window.__WRAPPER__ === 'finto' || numeroVersione(window.__WRAPPER__) >= numeroVersione(v));
+  // exe dalla 1.3: salva da solo le 2 copie del PDF; prima si scaricava e basta.
+  const EXE_SALVA_FILE = exeAlmeno('1.3.0');
+  // exe dalla 1.4: apre i rapporti salvati partendo dalla cartella Rapporti.
+  const EXE_APRI_FILE = exeAlmeno('1.4.0');
   const SU_SERVER = !NELL_EXE && /^https?:$/.test(location.protocol);
   const NEL_BROWSER = !NELL_EXE && !SU_SERVER;
   const SALTA = (n) => /^[@.$~]/.test(n) || /^(windows|program files.*|programdata|system volume information)$/i.test(n);
@@ -1754,7 +1870,7 @@
     }
   }
   // Solo per i test automatici (indirizzo che finisce con #prova): nessun effetto nell'uso normale.
-  if (location.hash === '#prova') window.__prova = { trovaArchivio, trovaModello, leggiDalBrowser, applicaArchivio, aggiornaSetup, apriSetup };
+  if (location.hash === '#prova') window.__prova = { trovaArchivio, trovaModello, leggiDalBrowser, applicaArchivio, aggiornaSetup, apriSetup, salvaNelBrowser };
   document.querySelectorAll('[data-azione]').forEach((b) => b.addEventListener('click', () => azione(b.dataset.azione)));
   $('#ricarica').addEventListener('click', () => caricaArchivio(true));
   $('#apriSetup').addEventListener('click', () => azione('setup'));

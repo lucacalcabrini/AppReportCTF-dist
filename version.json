@@ -1,10 +1,10 @@
 {
-  "version": "1.3",
+  "version": "1.4",
   "date": "2026-11-15",
-  "wrapper": "1.3.0",
+  "wrapper": "1.4.0",
   "notes": [
-    "Salvataggio del PDF in due copie: nella cartella Rapporti accanto al setup e in una cartella a scelta (riproposta ogni volta)",
-    "Nome del file: numero rapporto-commessa-data (es. 06020-NOME-15112026.pdf)"
+    "Apri rapporto…: riapre un PDF salvato dall'app per correggerlo, firme comprese (rapporti salvati dalla 1.4 in poi)",
+    "Un rapporto già salvato non viene mai sovrascritto: il nuovo prende -rev1, -rev2… (es. 06020-NOME-15112026-rev1.pdf)"
   ],
-  "filename": "AppReportCTF_v1.3.html"
+  "filename": "AppReportCTF_v1.4.html"
 }
