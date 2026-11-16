@@ -1,12 +1,9 @@
 {
-  "version": "1.5",
+  "version": "1.6",
   "date": "2026-11-16",
   "wrapper": "1.5.0",
   "notes": [
-    "L'exe si aggiorna da solo: all'avvio e ogni 2 ore controlla se c'è una nuova versione, la scarica, si sostituisce e si riavvia",
-    "Con l'app aperta l'aggiornamento si installa quando il PC non viene usato da un minuto (o alla chiusura)",
-    "Dopo l'aggiornamento il rapporto in corso, la posizione nella pagina e la finestra restano come prima",
-    "Nel Setup: spunta \"Aggiorna automaticamente\", ogni quante ore controllare e \"Controlla ora\""
+    "Nuova causale di intervento \"Assistenza Remota\": nel PDF spunta da sola la casella Altro con il testo \"Assistenza Remota\""
   ],
-  "filename": "AppReportCTF_v1.5.html"
+  "filename": "AppReportCTF_v1.6.html"
 }

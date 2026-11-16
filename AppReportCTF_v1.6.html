@@ -322,7 +322,12 @@
   'use strict';
 
   const MAX_RIGHE = 13;
+  // Caselle del modulo PDF (gruppo di scelte "causale").
   const CAUSALI = ['Installazione', 'Collaudo', 'Riparazione', 'Contratto', 'Modifica', 'Manutenzione', 'Altro'];
+  // Causali in più rispetto al modulo: nel PDF si spunta "Altro" e il loro nome va nel campo accanto.
+  const CAUSALI_COME_ALTRO = ['Assistenza Remota'];
+  // Causali mostrate nell'app (Altro resta in fondo).
+  const CAUSALI_APP = [...CAUSALI.slice(0, -1), ...CAUSALI_COME_ALTRO, 'Altro'];
 
   // Colonne della tabella "Dettagli intervento" -> prefisso del campo nel PDF (riga = suffisso 1..13).
   const COLONNE = {
@@ -460,12 +465,15 @@
     riga('Indirizzo', dati.indirizzo, 10, 'Indirizzo');
 
     // --- Causale (l'unico gruppo di scelte del modulo)
-    if (dati.causale) {
-      if (!CAUSALI.includes(dati.causale)) throw new Error('Causale non valida: ' + dati.causale);
+    let causale = dati.causale;
+    let altroTesto = dati.altro;
+    if (CAUSALI_COME_ALTRO.includes(causale)) { altroTesto = causale; causale = 'Altro'; }
+    if (causale) {
+      if (!CAUSALI.includes(causale)) throw new Error('Causale non valida: ' + causale);
       const gruppo = campi.find((f) => f instanceof PDFRadioGroup);
-      if (gruppo) gruppo.select(dati.causale);
+      if (gruppo) gruppo.select(causale);
     }
-    riga('Altro', dati.altro, 10, 'Causale – Altro');
+    riga('Altro', altroTesto, 10, 'Causale – Altro');
 
     // --- Dettagli intervento
     const righe = (dati.righe || []).filter((r) => Object.keys(COLONNE).some((k) => String(r[k] || '').trim()));
@@ -542,7 +550,7 @@
     return (nome || 'rapporto') + '.pdf';
   }
 
-  return { compila, leggiDati, nomeFile, nomeRevisione, CAUSALI, MAX_RIGHE, COLONNE };
+  return { compila, leggiDati, nomeFile, nomeRevisione, CAUSALI, CAUSALI_APP, MAX_RIGHE, COLONNE };
 });
 </script>
 <script>/*
@@ -681,9 +689,9 @@
 <script>
 (function () {
   'use strict';
-  const APP_VERSION='1.5';
+  const APP_VERSION='1.6';
   const $ = (s) => document.querySelector(s);
-  const { compila, leggiDati, nomeFile, nomeRevisione, CAUSALI, MAX_RIGHE } = window.RapportoPdf;
+  const { compila, leggiDati, nomeFile, nomeRevisione, CAUSALI_APP, MAX_RIGHE } = window.RapportoPdf;
   // Modulo PDF e commesse NON sono dentro questo file: si leggono all'avvio dai percorsi di config.json.
   let MODELLO = null;
   let CATALOGO = [];
@@ -844,7 +852,8 @@
   $('#progetto').addEventListener('change', (e) => impostaProgetto(e.target.value));
 
   // ---------- causale ----------
-  for (const c of CAUSALI) {
+  // "Assistenza Remota" non è una casella del modulo: nel PDF spunta "Altro" con il testo "Assistenza Remota".
+  for (const c of CAUSALI_APP) {
     const l = document.createElement('label');
     const i = document.createElement('input');
     i.type = 'radio'; i.name = 'causale'; i.value = c;
