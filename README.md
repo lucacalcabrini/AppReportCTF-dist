@@ -5,10 +5,9 @@ Il sorgente è in una repo privata.
 
 ## Download
 
-Dalla pagina **[Releases](../../releases/latest)**:
+Dalla pagina **[Releases](../../releases/latest)**: **AppReportCTF.exe**. Si avvia senza installazione e si aggiorna da solo (all'avvio e ogni 2 ore, modificabile nel Setup) senza perdere il rapporto in corso.
 
-- **AppReportCTF.exe**: si avvia senza installazione e si aggiorna da solo a ogni avvio. Serve il runtime WebView2, già presente su Windows 10/11.
-- **AppReportCTF_vX.html**: la stessa app da aprire in Chrome o Edge.
+Serve il componente Microsoft **WebView2**, già presente su Windows 10/11. Se manca, all'avvio l'app propone di scaricarlo dal sito Microsoft e installarlo: il file viene accettato solo se firmato da Microsoft.
 
 ## Setup
 
