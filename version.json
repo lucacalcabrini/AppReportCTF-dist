@@ -1,10 +1,9 @@
 {
-  "version": "1.8",
+  "version": "1.9",
   "date": "2026-11-16",
-  "wrapper": "1.5.1",
+  "wrapper": "1.6.0",
   "notes": [
-    "Il PDF salvato non porta più con sé i dati nascosti del modulo originale (programma e date di creazione, anteprima della pagina): dentro restano solo titolo, azienda, AppReportCTF e la data del rapporto",
-    "L'aggiornamento automatico accetta il nuovo exe solo dalla pagina delle release ufficiale"
-  ],
-  "filename": "AppReportCTF_v1.8.html"
+    "Nelle release c'è solo l'exe: la versione da aprire nel browser non viene più pubblicata",
+    "Se sul PC manca il componente Microsoft WebView2, all'avvio l'app propone di scaricarlo e installarlo (il file viene accettato solo se firmato da Microsoft)"
+  ]
 }
