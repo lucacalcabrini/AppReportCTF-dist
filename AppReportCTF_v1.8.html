@@ -515,6 +515,7 @@
     doc.setTitle(`Rapporto Intervento n° ${dati.numero || ''} – ${dati.cliente || ''}`.trim());
     if (opzioni.azienda) doc.setAuthor(opzioni.azienda);
     doc.setCreator('AppReportCTF');
+    pulisciMetadati(PDFLib, doc);
     // Dati dell'app (per riaprire e modificare il rapporto): flusso compresso legato al catalogo del PDF,
     // che i lettori PDF ignorano (non è un allegato visibile).
     if (opzioni.datiApp) {
@@ -523,6 +524,37 @@
     }
     const bytes = await doc.save({ updateFieldAppearances: false });
     return { bytes, avvisi };
+  }
+
+  // Toglie dal PDF i dati nascosti ereditati dal modulo originale: metadati XMP (programma, date e storia delle
+  // modifiche, anteprima in miniatura), anteprima e data di modifica delle pagine, chiavi non standard del catalogo.
+  // Gli oggetti vanno cancellati anche dal contesto, altrimenti pdf-lib li scriverebbe lo stesso nel file.
+  // Le date del documento diventano quelle del rapporto (altrimenti resterebbe la data di creazione del modulo).
+  function pulisciMetadati(PDFLib, doc) {
+    const { PDFName, PDFRef, PDFDict, PDFArray } = PDFLib;
+    const togli = (dict, nome) => {
+      const chiave = PDFName.of(nome);
+      const v = dict.get(chiave);
+      if (v === undefined) return;
+      if (v instanceof PDFRef) doc.context.delete(v);
+      dict.delete(chiave);
+    };
+    togli(doc.catalog, 'Metadata');
+    togli(doc.catalog, 'msxpdf:bookmarks');
+    for (const p of doc.getPages()) { togli(p.node, 'Thumb'); togli(p.node, 'LastModified'); }
+    // Livelli del disegno (OCG): in "Usage/CreatorInfo" c'è il programma che li ha creati.
+    const ocp = doc.catalog.lookup(PDFName.of('OCProperties'));
+    const livelli = ocp instanceof PDFDict ? ocp.lookup(PDFName.of('OCGs')) : null;
+    if (livelli instanceof PDFArray) {
+      for (const r of livelli.asArray()) {
+        const g = doc.context.lookup(r);
+        const uso = g instanceof PDFDict ? g.lookup(PDFName.of('Usage')) : null;
+        if (uso instanceof PDFDict) togli(uso, 'CreatorInfo');
+      }
+    }
+    const adesso = new Date();
+    doc.setCreationDate(adesso);
+    doc.setModificationDate(adesso);
   }
 
   const CHIAVE_DATI = 'DatiRapporto';
@@ -689,7 +721,7 @@
 <script>
 (function () {
   'use strict';
-  const APP_VERSION='1.7';
+  const APP_VERSION='1.8';
   const $ = (s) => document.querySelector(s);
   const { compila, leggiDati, nomeFile, nomeRevisione, CAUSALI_APP, MAX_RIGHE } = window.RapportoPdf;
   // Modulo PDF e commesse NON sono dentro questo file: si leggono all'avvio dai percorsi di config.json.

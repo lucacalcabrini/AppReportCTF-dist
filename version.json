@@ -1,10 +1,10 @@
 {
-  "version": "1.7",
+  "version": "1.8",
   "date": "2026-11-16",
-  "wrapper": "1.5.0",
+  "wrapper": "1.5.1",
   "notes": [
-    "Campi obbligatori (numero del rapporto, causale, testo di \"Altro\") in rosso finché sono vuoti, fin dall'apertura",
-    "Dopo il salvataggio del PDF il modulo si svuota, pronto per un nuovo rapporto (quello salvato si riapre con \"Apri rapporto…\")"
+    "Il PDF salvato non porta più con sé i dati nascosti del modulo originale (programma e date di creazione, anteprima della pagina): dentro restano solo titolo, azienda, AppReportCTF e la data del rapporto",
+    "L'aggiornamento automatico accetta il nuovo exe solo dalla pagina delle release ufficiale"
   ],
-  "filename": "AppReportCTF_v1.7.html"
+  "filename": "AppReportCTF_v1.8.html"
 }
