@@ -689,7 +689,7 @@
 <script>
 (function () {
   'use strict';
-  const APP_VERSION='1.6';
+  const APP_VERSION='1.7';
   const $ = (s) => document.querySelector(s);
   const { compila, leggiDati, nomeFile, nomeRevisione, CAUSALI_APP, MAX_RIGHE } = window.RapportoPdf;
   // Modulo PDF e commesse NON sono dentro questo file: si leggono all'avvio dai percorsi di config.json.
@@ -1038,6 +1038,7 @@
     disegnaRighe();
     pads.azienda.prepara(); pads.cliente.prepara();
     $('#blocca').checked = !!pref.blocca;
+    evidenziaObbligatori(); // campi obbligatori vuoti in rosso fin dall'apertura
   }
 
   for (const k of CAMPI) {
@@ -1094,6 +1095,7 @@
   let esitoSalvataggioVisibile = false;
   function cambiato() {
     esitoSalvataggioVisibile = false;
+    evidenziaObbligatori(); // il rosso sparisce appena il campo è compilato
     clearTimeout(timerSalva);
     timerSalva = setTimeout(() => scriviLS(CHIAVE_BOZZA, bozza), 250);
     clearTimeout(timerAnteprima);
@@ -1156,10 +1158,9 @@
     return m;
   }
 
-  // Dopo il primo tentativo di salvataggio i campi mancanti restano evidenziati finché non si compilano.
-  let controlloObbligatori = false;
+  // I campi obbligatori restano rossi finché sono vuoti (da subito, non solo dopo "Salva PDF").
   function evidenziaObbligatori() {
-    const m = controlloObbligatori ? obbligatoriMancanti() : [];
+    const m = obbligatoriMancanti();
     $('#numero').classList.toggle('manca', m.some((x) => x.campo === 'numero'));
     $('#causali').classList.toggle('manca', m.some((x) => x.campo === 'causale'));
     altro.classList.toggle('manca', m.some((x) => x.campo === 'altro'));
@@ -1178,7 +1179,6 @@
   }
 
   $('#salvaPdf').addEventListener('click', async () => {
-    controlloObbligatori = true;
     const obb = evidenziaObbligatori();
     if (obb.length) {
       mostraStato('err', testoObbligatori(obb));
@@ -1203,7 +1203,11 @@
       riempiDatalist('#elencoTecnici', pref.tecnici);
       const salvati = [esito.copia1, esito.copia2].filter(Boolean);
       const note = (esito.avvisi || []).concat(avvisi);
-      const testo = salvati.length ? `Salvato: ${salvati.join('  ·  ')}` : 'PDF non salvato.';
+      // PDF salvato: il modulo si svuota per il prossimo rapporto (quello salvato si riapre con "Apri rapporto…").
+      if (salvati.length) nuovoRapporto();
+      const testo = salvati.length
+        ? `Salvato: ${salvati.join('  ·  ')}. Modulo pronto per un nuovo rapporto (per correggere quello salvato: "Apri rapporto…").`
+        : 'PDF non salvato.';
       mostraStato(!salvati.length ? 'err' : (note.length ? 'warn' : 'ok'), testo, note);
       esitoSalvataggioVisibile = true;
     } catch (e) {
@@ -1286,15 +1290,18 @@
     }
   });
 
-  $('#nuovo').addEventListener('click', () => {
-    if (!confirm('Iniziare un nuovo rapporto?\nI dati attuali verranno cancellati (i PDF già salvati restano).')) return;
+  // Modulo vuoto: numero, causale e righe da compilare; restano le preferenze (tecnico, "PDF non modificabile").
+  function nuovoRapporto() {
     bozza = nuovaBozza();
-    controlloObbligatori = false;
-    evidenziaObbligatori();
     pads.azienda.pulisci(); pads.cliente.pulisci();
     mostraBozza();
     cambiato();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo(0, 0); // subito in cima (lo scorrimento "morbido" si interrompe quando cambia il messaggio in basso)
+  }
+
+  $('#nuovo').addEventListener('click', () => {
+    if (!confirm('Iniziare un nuovo rapporto?\nI dati attuali verranno cancellati (i PDF già salvati restano).')) return;
+    nuovoRapporto();
   });
 
   // ---------- riaprire un rapporto salvato ----------
@@ -1349,8 +1356,6 @@
       if (!bozzaVuota() && !confirm(`Aprire il rapporto "${file.nome}"?\nI dati che stai compilando verranno sostituiti (i PDF già salvati restano).`)) return;
       pads.azienda.pulisci(); pads.cliente.pulisci(); // svuota i riquadri (prima di cambiare bozza)
       bozza = normalizzaBozza(contenuto.bozza);
-      controlloObbligatori = false;
-      evidenziaObbligatori();
       mostraBozza();
       cambiato();
       window.scrollTo({ top: 0, behavior: 'smooth' });

@@ -1,9 +1,10 @@
 {
-  "version": "1.6",
+  "version": "1.7",
   "date": "2026-11-16",
   "wrapper": "1.5.0",
   "notes": [
-    "Nuova causale di intervento \"Assistenza Remota\": nel PDF spunta da sola la casella Altro con il testo \"Assistenza Remota\""
+    "Campi obbligatori (numero del rapporto, causale, testo di \"Altro\") in rosso finché sono vuoti, fin dall'apertura",
+    "Dopo il salvataggio del PDF il modulo si svuota, pronto per un nuovo rapporto (quello salvato si riapre con \"Apri rapporto…\")"
   ],
-  "filename": "AppReportCTF_v1.6.html"
+  "filename": "AppReportCTF_v1.7.html"
 }
