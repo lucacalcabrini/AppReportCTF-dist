@@ -118,6 +118,13 @@
   .setup .msg { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--blu-chiaro); font-size: 13.5px; }
   .setup .msg.err { background: #fdf0ef; color: var(--err); }
   .setup .msg:empty { display: none; }
+  .setup fieldset.agg { border: 1px solid var(--bordo); border-radius: 8px; padding: 8px 12px 10px; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+  .setup fieldset.agg legend { font-weight: 600; font-size: 13.5px; padding: 0 4px; }
+  .setup .agg .riga-campo { align-items: center; gap: 8px 18px; }
+  .setup .agg label.check { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+  .setup .agg input[type=checkbox] { width: auto; flex: none; }
+  .setup .agg input[type=number] { width: 72px; flex: none; }
+  .setup .agg .nota { margin: 0; flex: 1 1 220px; }
 </style>
 </head>
 <body>
@@ -268,6 +275,17 @@
         <button type="button" id="setupModelloAuto">Automatico</button>
       </span>
     </label>
+    <fieldset class="agg" id="setupAgg" hidden>
+      <legend>Aggiornamenti dell'app (su questo PC)</legend>
+      <div class="riga-campo">
+        <label class="check"><input type="checkbox" id="aggAuto"> Aggiorna automaticamente</label>
+        <label class="check">Controlla ogni <input type="number" id="aggOre" min="0.5" max="24" step="0.5" inputmode="decimal"> ore</label>
+      </div>
+      <div class="riga-campo">
+        <span class="nota" id="aggStato"></span>
+        <button type="button" id="aggControlla">Controlla ora</button>
+      </div>
+    </fieldset>
     <p class="nota" id="setupNota"></p>
   </div>
   <div class="piede">
@@ -663,7 +681,7 @@
 <script>
 (function () {
   'use strict';
-  const APP_VERSION='1.4';
+  const APP_VERSION='1.5';
   const $ = (s) => document.querySelector(s);
   const { compila, leggiDati, nomeFile, nomeRevisione, CAUSALI, MAX_RIGHE } = window.RapportoPdf;
   // Modulo PDF e commesse NON sono dentro questo file: si leggono all'avvio dai percorsi di config.json.
@@ -1162,6 +1180,7 @@
     }
     const m = mancanti();
     if (m.length && !confirm('Mancano: ' + m.join(', ') + '.\nSalvare il PDF comunque?')) return;
+    salvataggioInCorso = true; // l'aggiornamento automatico aspetta la fine del salvataggio
     try {
       const { blob, avvisi, nome } = await genera();
       // Due copie: 1) cartella dei rapporti accanto al setup  2) dove sceglie l'utente (ripropone l'ultima cartella).
@@ -1181,8 +1200,11 @@
     } catch (e) {
       console.error(e);
       mostraStato('err', 'Errore nel salvataggio del PDF: ' + e.message);
+    } finally {
+      salvataggioInCorso = false;
     }
   });
+  let salvataggioInCorso = false;
 
   function scarica(blob, nome) {
     const a = document.createElement('a');
@@ -1352,6 +1374,8 @@
   const EXE_SALVA_FILE = exeAlmeno('1.3.0');
   // exe dalla 1.4: apre i rapporti salvati partendo dalla cartella Rapporti.
   const EXE_APRI_FILE = exeAlmeno('1.4.0');
+  // exe dalla 1.5: si aggiorna da solo; nel Setup spunta "Aggiorna automaticamente", ore tra i controlli, "Controlla ora".
+  const EXE_AGGIORNA = exeAlmeno('1.5.0');
   const SU_SERVER = !NELL_EXE && /^https?:$/.test(location.protocol);
   const NEL_BROWSER = !NELL_EXE && !SU_SERVER;
   const SALTA = (n) => /^[@.$~]/.test(n) || /^(windows|program files.*|programdata|system volume information)$/i.test(n);
@@ -1738,8 +1762,69 @@
     $('#setupNota').textContent = s.soloLettura
       ? 'Modalità sviluppo: il setup è il file setup.json del progetto e si modifica a mano.'
       : NOTA_SETUP + (NEL_BROWSER ? ' Nel browser premi anche "Scegli…", per dare il permesso di lettura sulla cartella.' : '');
+    await mostraAggiornamenti();
     if (!dlg.open) dlg.showModal();
   }
+
+  // ---------- Setup: aggiornamenti dell'exe (impostazioni di questo PC, salvate dall'exe) ----------
+  function testoStatoAgg(a) {
+    let t = `Versione installata: ${a.versione}`;
+    if (a.pronta) t += ` · versione ${a.pronta} già scaricata: si installa ` +
+      (a.automatico ? 'da sola quando il PC resta fermo un minuto, o alla chiusura' : 'alla chiusura dell\'app');
+    if (a.ultimoControllo) t += ` · ultimo controllo: ${a.ultimoControllo}`;
+    return t + '.';
+  }
+
+  async function mostraAggiornamenti() {
+    $('#setupAgg').hidden = !EXE_AGGIORNA;
+    if (!EXE_AGGIORNA) return;
+    try {
+      const a = await chiediAllExe('statoAggiornamenti', {}, 5000);
+      $('#aggAuto').checked = !!a.automatico;
+      $('#aggOre').value = a.ore;
+      $('#aggOre').disabled = !a.automatico;
+      $('#aggStato').textContent = testoStatoAgg(a);
+    } catch (e) {
+      $('#aggStato').textContent = 'Impostazioni degli aggiornamenti non disponibili: ' + e.message;
+    }
+  }
+
+  $('#aggAuto').addEventListener('change', () => { $('#aggOre').disabled = !$('#aggAuto').checked; });
+
+  // Salvate insieme al Setup (pulsante Salva).
+  async function salvaAggiornamenti() {
+    if (!EXE_AGGIORNA || $('#setupAgg').hidden) return true;
+    const ore = Number(String($('#aggOre').value).replace(',', '.'));
+    if (!(ore >= 0.5 && ore <= 24)) {
+      msgSetup('Aggiornamenti: indica ogni quante ore controllare, da 0,5 a 24.', true);
+      $('#aggOre').focus();
+      return false;
+    }
+    await chiediAllExe('impostaAggiornamenti', { automatico: $('#aggAuto').checked, ore }, 5000);
+    return true;
+  }
+
+  $('#aggControlla').addEventListener('click', () => passoSetup(async () => {
+    const b = $('#aggControlla');
+    b.disabled = true;
+    $('#aggStato').textContent = 'Controllo in corso…';
+    try {
+      const r = await chiediAllExe('controllaAggiornamenti');
+      if (!r.nuova) { $('#aggStato').textContent = `Hai già l'ultima versione (${r.versione}).`; return; }
+      if (!confirm(`È pronta la versione ${r.nuova} (questa è la ${r.versione}).\n` +
+        'Installarla ora? L\'app si riavvia e il rapporto che stai compilando resta.')) {
+        await mostraAggiornamenti();
+        return;
+      }
+      dlg.close();
+      window.__primaDiRiavviare(); // salva subito rapporto e posizione
+      mostraStato('ok', `Installazione della versione ${r.nuova}: l'app si riavvia…`);
+      esitoSalvataggioVisibile = true;
+      await chiediAllExe('installaAggiornamento');
+    } finally {
+      b.disabled = false;
+    }
+  }));
 
   async function passoSetup(fn) {
     try { await fn(); } catch (e) { if (e.name !== 'AbortError') msgSetup(e.message, true); }
@@ -1830,6 +1915,7 @@
   });
 
   $('#setupSalva').addEventListener('click', () => passoSetup(async () => {
+    if (!await salvaAggiornamenti()) return;
     const radice = $('#setupRadice').value.trim();
     if (!radice) { msgSetup('Indica la cartella principale.', true); return; }
     if (NELL_EXE) {
@@ -1875,7 +1961,27 @@
   $('#ricarica').addEventListener('click', () => caricaArchivio(true));
   $('#apriSetup').addEventListener('click', () => azione('setup'));
 
+  // ---------- aggiornamento automatico dell'exe senza perdere la sessione ----------
+  // Prima di riavviarsi l'exe chiama questa funzione: salva subito rapporto e posizione nella pagina.
+  // Risponde false se l'utente sta facendo qualcosa (salvataggio PDF, finestra Setup aperta): l'exe riprova dopo.
+  const CHIAVE_RIPRESA = 'ctf-rapporto-ripresa';
+  window.__primaDiRiavviare = () => {
+    if (salvataggioInCorso || document.querySelector('dialog[open]')) return false;
+    clearTimeout(timerSalva);
+    scriviLS(CHIAVE_BOZZA, bozza);
+    scriviLS(CHIAVE_RIPRESA, { y: window.scrollY, quando: Date.now(), da: APP_VERSION });
+    return true;
+  };
+
   mostraBozza();
+  const ripresa = leggiLS(CHIAVE_RIPRESA, null);
+  try { localStorage.removeItem(CHIAVE_RIPRESA); } catch (e) { /* niente da togliere */ }
+  if (window.__AGGIORNATA__ || (ripresa && Date.now() - ripresa.quando < 10 * 60 * 1000)) {
+    if (ripresa) setTimeout(() => window.scrollTo(0, ripresa.y || 0), 400);
+    mostraStato('ok', `App aggiornata alla versione ${APP_VERSION}` +
+      (bozzaVuota() ? '.' : ': il rapporto che stavi compilando è stato mantenuto.'));
+    esitoSalvataggioVisibile = true; // il messaggio resta finché non si modifica qualcosa
+  }
   caricaArchivio(false);
 })();
 </script>
