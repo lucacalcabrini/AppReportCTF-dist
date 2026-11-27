@@ -1,11 +1,12 @@
 {
-  "version": "2.0",
+  "version": "2.1",
   "date": "2026-11-27",
-  "wrapper": "2.0.0",
+  "wrapper": "2.1.0",
   "notes": [
-    "Il PDF salvato è sempre non modificabile e non contiene più dati nascosti: i dati per riaprire il rapporto stanno in un file a parte, nella cartella Rapporti\\dati",
-    "Apri rapporto… funziona con tutte e due le copie del PDF e con i PDF salvati dalle versioni 1.4 – 1.9",
-    "Aggiornamenti firmati: l'app installa solo nuove versioni con una firma valida",
-    "Più controlli di sicurezza: cartelle in sola lettura riconosciute anche da unità di rete o collegamenti, niente navigazione verso siti esterni, strumenti da sviluppatore disattivati"
+    "Vitto ora è un numero (pasti della giornata, es. 2 = pranzo e cena) e si lascia vuoto se non ce ne sono. I rapporti salvati prima con Vitto \"Sì\" si riaprono con 1",
+    "Cerca commessa: scrivi parte del nome, il n° cliente o il n° progetto e l'elenco mostra solo quelle che corrispondono (Invio sceglie la prima)",
+    "L'app si apre subito: gli aggiornamenti si cercano e si scaricano mentre lavori e si installano al primo minuto di pausa o alla chiusura",
+    "Exe più leggero e con la versione giusta in Proprietà > Dettagli; aggiornamenti anche dietro un proxy aziendale con password",
+    "Anteprima del PDF sempre allineata all'ultima modifica, anche scrivendo veloce"
   ]
 }
