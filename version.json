@@ -1,9 +1,11 @@
 {
-  "version": "1.9",
-  "date": "2026-11-16",
-  "wrapper": "1.6.0",
+  "version": "2.0",
+  "date": "2026-11-27",
+  "wrapper": "2.0.0",
   "notes": [
-    "Nelle release c'è solo l'exe: la versione da aprire nel browser non viene più pubblicata",
-    "Se sul PC manca il componente Microsoft WebView2, all'avvio l'app propone di scaricarlo e installarlo (il file viene accettato solo se firmato da Microsoft)"
+    "Il PDF salvato è sempre non modificabile e non contiene più dati nascosti: i dati per riaprire il rapporto stanno in un file a parte, nella cartella Rapporti\\dati",
+    "Apri rapporto… funziona con tutte e due le copie del PDF e con i PDF salvati dalle versioni 1.4 – 1.9",
+    "Aggiornamenti firmati: l'app installa solo nuove versioni con una firma valida",
+    "Più controlli di sicurezza: cartelle in sola lettura riconosciute anche da unità di rete o collegamenti, niente navigazione verso siti esterni, strumenti da sviluppatore disattivati"
   ]
 }
