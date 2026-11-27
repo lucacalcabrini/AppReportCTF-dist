@@ -7,6 +7,8 @@ Il sorgente è in una repo privata.
 
 Dalla pagina **[Releases](../../releases/latest)**: **AppReportCTF.exe**. Si avvia senza installazione e si aggiorna da solo (all'avvio e ogni 2 ore, modificabile nel Setup) senza perdere il rapporto in corso.
 
+Accanto all'exe c'è **AppReportCTF.exe.sig**: è la firma che l'app controlla prima di installare un aggiornamento (dalla versione 2.0 si installano solo versioni con una firma valida). Non serve scaricarlo.
+
 Serve il componente Microsoft **WebView2**, già presente su Windows 10/11. Se manca, all'avvio l'app propone di scaricarlo dal sito Microsoft e installarlo: il file viene accettato solo se firmato da Microsoft.
 
 ## Setup
@@ -19,3 +21,5 @@ Al primo avvio si apre la finestra **⚙ Setup**. Lì puoi:
 
 Questa repo e le release non contengono dati: niente nomi, percorsi, archivi, commesse o moduli.
 Tutto ciò che serve all'app sta nel `setup.json` sul PC di chi la usa. Le cartelle indicate lì vengono **solo lette**.
+
+I PDF salvati dall'app sono "fogli" non modificabili e senza dati nascosti: i dati per riaprire un rapporto restano sul PC, in un file a parte nella cartella dei rapporti.
