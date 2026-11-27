@@ -1,12 +1,11 @@
 {
-  "version": "2.1",
+  "version": "2.2",
   "date": "2026-11-27",
-  "wrapper": "2.1.0",
+  "wrapper": "2.2.0",
   "notes": [
-    "Vitto ora è un numero (pasti della giornata, es. 2 = pranzo e cena) e si lascia vuoto se non ce ne sono. I rapporti salvati prima con Vitto \"Sì\" si riaprono con 1",
-    "Cerca commessa: scrivi parte del nome, il n° cliente o il n° progetto e l'elenco mostra solo quelle che corrispondono (Invio sceglie la prima)",
-    "L'app si apre subito: gli aggiornamenti si cercano e si scaricano mentre lavori e si installano al primo minuto di pausa o alla chiusura",
-    "Exe più leggero e con la versione giusta in Proprietà > Dettagli; aggiornamenti anche dietro un proxy aziendale con password",
-    "Anteprima del PDF sempre allineata all'ultima modifica, anche scrivendo veloce"
+    "Rapporti riaperti: se cambi qualcosa dopo la firma del cliente compare un avviso e, al salvataggio, scegli se tenere la firma, toglierla o annullare",
+    "Aggiornamenti più sicuri: la firma si ricontrolla subito prima di installare",
+    "Regole di sicurezza più strette nella pagina dell'app (nessuna risorsa esterna)",
+    "Proxy: le credenziali di Windows vanno solo a un proxy impostato in Windows, mai a uno trovato da solo in rete"
   ]
 }
